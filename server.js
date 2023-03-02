@@ -3,11 +3,9 @@ const app = express();
 
 const util = require("util");
 const fs = require("fs");
-const conversionFactory = require("html-to-xlsx");
-const puppeteer = require("puppeteer");
-const chromeEval = require("chrome-page-eval")({ puppeteer });
-const writeFileAsync = util.promisify(fs.writeFile);
+const Excel = require('exceljs');
 const path = require("path");
+const uuid = require("uuid");
 
 app.set("view engine", "ejs");
 
@@ -61,39 +59,33 @@ const questionnaire = [
 // };
 // convertJsonToExcel();
 
-const conversion = conversionFactory({
-  extract: async ({ html, ...restOptions }) => {
-    const tmpHtmlPath = path.join("", "input.html");
+const tes = () => {
+  const workbook = new Excel.Workbook();
+  const name = `new-${uuid.v4()}.xlsx`;
+    workbook.xlsx.readFile('old.xlsx')
+    .then(function() {
+        var worksheet = workbook.getWorksheet(1);
+        var row = worksheet.getRow(1);
+        row.getCell(4).value = "Tes Judul Excel"; 
+        row.getCell(8).value = "no/22/001"; 
+        row.commit();
 
-    await writeFileAsync(tmpHtmlPath, html);
+        var row2 = worksheet.getRow(2);
+        row2.getCell(8).value = "1 maret 2023"; 
+        row2.commit();
 
-    const result = await chromeEval({
-      ...restOptions,
-      html: tmpHtmlPath,
-      scriptFn: conversionFactory.getScriptFn(),
-    });
 
-    const tables = Array.isArray(result) ? result : [result];
-
-    return tables.map((table) => ({
-      name: table.name,
-      getRows: async (rowCb) => {
-        table.rows.forEach((row) => {
-          rowCb(row);
-        });
-      },
-      rowsCount: table.rows.length,
-    }));
-  },
-});
-
-async function run() {
-  const stream = await conversion(`<table><tr><td>cell value</td></tr></table>`);
-
-  stream.pipe(fs.createWriteStream("output.xlsx"));
-}
-
-run();
+        var row7 = worksheet.getRow(7);
+        row7.getCell(1).value = "1.1"; 
+        row7.getCell(3).value = "Bahan dan alat tertata rapi"; 
+        row7.getCell(4).value = "F"; 
+        row7.getCell(8).value = "10"; 
+        
+        row7.commit();
+        return workbook.xlsx.writeFile(name);
+    })
+  };
+  tes();
 
 app.get("/", (req, res) => {
   res.render("index", { title: "convert" });
