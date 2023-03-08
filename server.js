@@ -1,19 +1,11 @@
 const express = require("express");
 const app = express();
 
-const util = require("util");
-const fs = require("fs");
 const Excel = require("exceljs");
-const path = require("path");
+
 const uuid = require("uuid");
 
 app.set("view engine", "ejs");
-
-const XLSX = require("xlsx");
-
-var isJson = require("is-json");
-
-var json2xls = require("json2xls");
 
 var bodyParser = require("body-parser");
 
@@ -36,24 +28,65 @@ const sequelize = new Sequelize("Questioner", null, null, {
     },
   },
 });
+
 const { QueryTypes } = require("sequelize");
 
-const tes = async () => {
-  const submission_details = await sequelize.query("SELECT * FROM submission WHERE doc_no = 'FM-HSE-13'", {
-    type: QueryTypes.SELECT,
-  });
+const tes = async (req) => {
+  let submission_details = await sequelize.query(
+    `SELECT 
+    submission.id,
+    submission.doc_no,
+    directus_users.first_name,
+    directus_users.last_name,
+    form.nama_form,
+    form_category.nama_kategori,
+    form_category.id AS id_kategori,
 
-  const answer_details = await sequelize.query("SELECT * FROM answer WHERE id = 56", {
-    type: QueryTypes.SELECT,
-  });
+    submission.tanggal_dibuat,
+    submission.tanggal_revisi,
+    submission.nama_cabang,
+    
+    question.indikator,
+    question.metode_verifikasi,
+    question.bobot,
+    
+    answer.hasil,
+    answer.nilai,
+    answer.keterangan
 
-  const question_details = await sequelize.query("SELECT * FROM question WHERE id = 16", {
-    type: QueryTypes.SELECT,
-  });
+  FROM submission
 
-  const form_details = await sequelize.query("SELECT * FROM form WHERE id = 6", {
-    type: QueryTypes.SELECT,
-  });
+    INNER JOIN form ON submission.nama_form=form.id 
+    INNER JOIN directus_users ON submission.user = directus_users.id
+    INNER JOIN form_category ON form_category.category_id=form.id
+    INNER JOIN question ON question.question_id=form_category.id
+    LEFT JOIN answer ON answer.question_id=question.id
+   
+   WHERE doc_no = "${req.query.doc_no}"`,
+
+    {
+      type: QueryTypes.SELECT,
+    }
+  );
+
+  console.log(submission_details);
+
+  let data = [];
+
+  const groupByCategory = submission_details.reduce((group, item) => {
+    const { nama_kategori } = item;
+    group[nama_kategori] = group[nama_kategori] ?? [];
+    group[nama_kategori].push(item);
+    return group;
+  }, {});
+
+  for (let key in groupByCategory) {
+    data.push({
+      id_kategori: groupByCategory[key][0].id_kategori,
+      nama_kategori: key,
+      detail: groupByCategory[key],
+    });
+  }
 
   const workbook = new Excel.Workbook();
 
@@ -61,34 +94,69 @@ const tes = async () => {
   workbook.xlsx.readFile("old.xlsx").then(function () {
     var worksheet = workbook.getWorksheet(1);
 
+    const style = {
+      name: "Comic Sans MS",
+      family: 4,
+      size: 10,
+      underline: true,
+      bold: true,
+    };
+
     var row = worksheet.getRow(1);
-    row.getCell(4).value = form_details[0].nama_form;
-    row.getCell(8).value = submission_details[0].doc_no;
+    row.getCell(2).value = submission_details[0].nama_form;
+    row.getCell(2).font = style;
+    row.getCell(4).value = submission_details[0].doc_no;
+    row.getCell(4).font = style;
+
     row.commit();
 
     var row2 = worksheet.getRow(2);
-    row2.getCell(8).value = submission_details[0].tanggal_dibuat;
+    row2.getCell(4).value = submission_details[0].tanggal_dibuat;
+    row2.getCell(4).font = style;
     row2.commit();
 
     var row3 = worksheet.getRow(3);
-    row3.getCell(8).value = submission_details[0].tanggal_revisi;
+    row3.getCell(4).value = submission_details[0].tanggal_revisi;
+    row2.getCell(4).font = style;
     row3.commit();
 
     var row4 = worksheet.getRow(4);
-    row4.getCell(8).value = submission_details[0].nama_cabang;
+    row4.getCell(4).value = submission_details[0].nama_cabang;
     row4.commit();
 
-    var row7 = worksheet.getRow(7);
-    row7.getCell(1).value = "1.1";
-    row7.getCell(2).value = question_details[0].indikator;
-    row7.getCell(4).value = question_details[0].metode_verifikasi;
-    row7.getCell(5).value = answer_details[0].metode_verifikasi;
-    row7.getCell(7).value = answer_details[0].nilai;
-    row7.getCell(8).value = question_details[0].bobot;
-    row7.getCell(9).value = answer_details[0].keterangan;
-    row7.commit();
+    for (var x = data.length - 1; x >= 0; x--) {
+      const rowFirst = [];
+
+      rowFirst[1] = x + 1;
+      rowFirst[2] = data[x].nama_kategori;
+
+      const row = 7;
+
+      for (var i = data[x].detail.length - 1; i >= 0; i--) {
+        var rowValues = [];
+        rowValues[1] = `${x + 1}.${i + 1}`;
+        rowValues[2] = data[x].detail[i].indikator;
+
+        rowValues[3] = data[x].detail[i].metode_verifikasi;
+        rowValues[4] = data[x].detail[i].hasil;
+        rowValues[5] = data[x].detail[i].nilai;
+        rowValues[6] = data[x].detail[i].bobot;
+        rowValues[7] = data[x].detail[i].keterangan;
+
+        worksheet.insertRow(7, rowValues, "o");
+      }
+      worksheet.insertRow(row, rowFirst, "o");
+    }
 
     return workbook.xlsx.writeFile(name);
   });
 };
-tes();
+
+app.get("/create-excel", (req, res) => {
+  tes(req);
+  console.log(tes);
+});
+
+app.listen(3000, () => {
+  console.log("Server started on port 3000");
+});
